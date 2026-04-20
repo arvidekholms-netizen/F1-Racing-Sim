@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D F1 Racing Prototype</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; }
+        canvas { display: block; }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 18px;
+            text-shadow: 2px 2px 2px black;
+            pointer-events: none;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="ui">
+        <h2>F1 Web Racing</h2>
+        <p>Controls: UP/DOWN to accelerate/brake. LEFT/RIGHT to steer.</p>
+        <p>You are the RED car.</p>
+    </div>
+
+    <script>
+        // 1. Scene Setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); // Sky blue
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 2. Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(100, 200, 50);
+        scene.add(dirLight);
+
+        // 3. The Track (Simple Oval/Ring for Track 1)
+        const trackGeometry = new THREE.RingGeometry(40, 60, 64);
+        const trackMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, side: THREE.DoubleSide });
+        const track = new THREE.Mesh(trackGeometry, trackMaterial);
+        track.rotation.x = -Math.PI / 2;
+        scene.add(track);
+
+        // Ground/Grass
+        const groundGeometry = new THREE.PlaneGeometry(500, 500);
+        const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22 });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -0.1;
+        scene.add(ground);
+
+        // 4. Create the Cars
+        const cars = [];
+        const numCars = 10;
+        
+        for (let i = 0; i < numCars; i++) {
+            // F1 cars represented as simple rectangular bodies
+            const carGroup = new THREE.Group();
+            
+            const bodyGeo = new THREE.BoxGeometry(2, 0.8, 4.5);
+            // Make the player (car 0) red, and AI cars random colors
+            const carColor = i === 0 ? 0xff0000 : Math.random() * 0xffffff;
+            const bodyMat = new THREE.MeshStandardMaterial({ color: carColor });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.4;
+            carGroup.add(body);
+
+            // Starting positions on the track grid
+            const angle = (i / numCars) * Math.PI * 2; // Spread around the track
+            const laneRadius = 45 + (Math.random() * 10); // Random lane
+            
+            carGroup.position.set(Math.cos(angle) * laneRadius, 0, Math.sin(angle) * laneRadius);
+            carGroup.rotation.y = -angle;
+            
+            scene.add(carGroup);
+            
+            cars.push({
+                mesh: carGroup,
+                angle: angle,
+                radius: laneRadius,
+                speed: i === 0 ? 0 : 0.015 + Math.random() * 0.005 // AI gets base speed, player starts at 0
+            });
+        }
+
+        const player = cars[0]; // You are car index 0
+
+        // 5. Controls
+        const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+        window.addEventListener('keydown', (e) => keys[e.code] = true);
+        window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+
+        // 6. Game Loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Player Physics / Input
+            if (keys.ArrowUp) player.speed += 0.0002;
+            if (keys.ArrowDown) player.speed -= 0.0005; // Brakes
+            
+            // Friction and limits
+            player.speed *= 0.99; // Natural slowdown
+            player.speed = Math.max(0, Math.min(player.speed, 0.025)); // Top speed limit
+
+            // Steering (only works if moving)
+            if (player.speed > 0.001) {
+                if (keys.ArrowLeft) player.radius -= 0.3;
+                if (keys.ArrowRight) player.radius += 0.3;
+            }
+            
+            // Keep player on the track (roughly)
+            player.radius = Math.max(41, Math.min(player.radius, 59));
+
+            // Move all cars
+            cars.forEach((car) => {
+                car.angle -= car.speed; // Move forward along the circle
+                car.mesh.position.set(
+                    Math.cos(car.angle) * car.radius, 
+                    0, 
+                    Math.sin(car.angle) * car.radius
+                );
+                car.mesh.rotation.y = -car.angle; // Rotate to face direction of travel
+            });
+
+            // Camera follow player
+            // Calculate position slightly behind and above the player
+            const cameraOffset = new THREE.Vector3(
+                Math.cos(player.angle + 0.2) * (player.radius + 15), 
+                8, 
+                Math.sin(player.angle + 0.2) * (player.radius + 15)
+            );
+            
+            camera.position.lerp(cameraOffset, 0.1); // Smooth camera movement
+            camera.lookAt(player.mesh.position);
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
